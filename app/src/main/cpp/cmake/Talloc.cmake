@@ -13,17 +13,19 @@ set(TALLOC_URL_HASH SHA256=410a547f08557007be0e88194f218868358edc0ab98c98ba8c167
 set(TALLOC_CACHE_DIR ${CMAKE_SOURCE_DIR}/.cache/downloads)
 
 # CI prefetches the archive into TALLOC_CACHE_DIR and keeps it in
-# actions/cache. Prefer that local copy so a clean build needs no network.
-# The upstream entry points are fallbacks, tried in order by CMake.
-set(TALLOC_URLS)
+# actions/cache. Use that single local path when available so a clean build
+# needs no network. ExternalProject rejects a URL *list* that contains a local
+# path ("At least one entry of URL is a path (invalid in a list)"), so the
+# local copy and the remote fallbacks must be mutually exclusive.
 if(EXISTS "${TALLOC_CACHE_DIR}/${TALLOC_ARCHIVE}")
-    list(APPEND TALLOC_URLS "${TALLOC_CACHE_DIR}/${TALLOC_ARCHIVE}")
+    set(TALLOC_URLS "${TALLOC_CACHE_DIR}/${TALLOC_ARCHIVE}")
+else()
+    set(TALLOC_URLS
+            https://download.samba.org/pub/talloc/${TALLOC_ARCHIVE}
+            https://www.samba.org/ftp/talloc/${TALLOC_ARCHIVE}
+            https://ftp.samba.org/pub/talloc/${TALLOC_ARCHIVE}
+    )
 endif()
-list(APPEND TALLOC_URLS
-        https://download.samba.org/pub/talloc/${TALLOC_ARCHIVE}
-        https://www.samba.org/ftp/talloc/${TALLOC_ARCHIVE}
-        https://ftp.samba.org/pub/talloc/${TALLOC_ARCHIVE}
-)
 
 # specific correct clang target to use
 if(${CMAKE_ANDROID_ARCH_ABI} STREQUAL "arm64-v8a")
