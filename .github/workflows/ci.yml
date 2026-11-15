@@ -37,12 +37,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Assemble debug APK without native code
-        run: ./gradlew :app:assembleDebug -PskipNative --stacktrace --console=plain
-
-      - name: Run host unit tests
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest -PskipNative --stacktrace --console=plain
+          ./gradlew :app:assembleDebug -PskipNative --stacktrace --console=plain
+
+      - name: Run host unit tests
+        run: ./gradlew :app:testDebugUnitTest -PskipNative --stacktrace --console=plain
 
       - name: Upload APK
         if: always()
@@ -100,7 +100,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK (NDK, both ABIs)
-        run: ./gradlew :app:assembleDebug --stacktrace --console=plain
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --stacktrace --console=plain
 
       - name: Upload APK
         if: always()
