@@ -84,7 +84,9 @@ object AnnaCore {
         val bindAll = prefs().getBoolean(PREF_ALLOW_LAN, false)
         val port = prefs().getInt(PREF_PORT, DEFAULT_PORT)
         val routes = AnnaRoutes(this)
-        server = AnnaHttpServer(routes, bindAll, port).also { it.start() }
+        val httpServer = AnnaHttpServer(routes, bindAll, port, ::onBindFailed)
+        server = httpServer
+        httpServer.start()
         Log.i(TAG, "gateway started on ${if (bindAll) "0.0.0.0" else "127.0.0.1"}:$port")
     }
 
@@ -93,6 +95,25 @@ object AnnaCore {
         server?.stop()
         server = null
         Log.i(TAG, "gateway stopped")
+    }
+
+    /** Rebind the socket after a preference such as LAN access changes. */
+    @Synchronized
+    fun restartGateway() {
+        if (!::rootfs.isInitialized) {
+            Log.w(TAG, "restartGateway before init()")
+            return
+        }
+        stopGateway()
+        startGateway()
+    }
+
+    @Synchronized
+    private fun onBindFailed(failed: AnnaHttpServer) {
+        if (server === failed) {
+            server = null
+            Log.e(TAG, "gateway bind failed; ready for retry")
+        }
     }
 
     val isGatewayRunning: Boolean

@@ -131,7 +131,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         AnnaCore.detachSurface()
-        AnnaService.stop(this)
         Anbox.stopRuntime()
         unregisterReceiver(receiver)
     }

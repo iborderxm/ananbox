@@ -2,6 +2,7 @@ package com.github.ananbox.anna
 
 import android.net.Uri
 import android.util.Log
+import com.github.ananbox.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -11,11 +12,15 @@ import java.security.MessageDigest
 /**
  * External API surface of the Anna host layer.
  *
- * All endpoints except `GET /v1/ping` require an
- * `Authorization: Bearer <token>` header. The token is generated per install
- * and written to `<filesDir>/anna.token`.
+ * Release builds require an `Authorization: Bearer <token>` header on every
+ * endpoint except `GET /v1/ping`. Debug builds skip authentication entirely so
+ * the gateway can be used straight from a browser during development. The
+ * token is generated per install and written to `<filesDir>/anna.token`.
  */
 class AnnaRoutes(private val core: AnnaCore) {
+
+    /** Debug builds are open; release builds always require the bearer token. */
+    private val authRequired: Boolean = !BuildConfig.DEBUG
 
     data class Response(
         val status: Int,
@@ -59,16 +64,19 @@ class AnnaRoutes(private val core: AnnaCore) {
                     .put("ok", true)
                     .put("service", "anna")
                     .put("apiVersion", AnnaCore.API_VERSION)
-                    .put("auth", "bearer")
+                    .put("auth", if (authRequired) "bearer" else "none")
+                    .put("authRequired", authRequired)
             )
         }
 
-        val provided = headers["authorization"]
-            ?.removePrefix("Bearer ")
-            ?.removePrefix("bearer ")
-            ?.trim()
-        if (provided == null || !constantTimeEquals(provided, core.token)) {
-            return Response.json(401, JSONObject().put("error", "missing or invalid token"))
+        if (authRequired) {
+            val provided = headers["authorization"]
+                ?.removePrefix("Bearer ")
+                ?.removePrefix("bearer ")
+                ?.trim()
+            if (provided == null || !constantTimeEquals(provided, core.token)) {
+                return Response.json(401, JSONObject().put("error", "missing or invalid token"))
+            }
         }
 
         return when {

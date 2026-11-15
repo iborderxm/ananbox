@@ -4,6 +4,7 @@ import android.util.Log
 import java.io.BufferedOutputStream
 import java.io.InputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.Executors
@@ -19,6 +20,7 @@ class AnnaHttpServer(
     private val routes: AnnaRoutes,
     private val bindAll: Boolean,
     private val port: Int,
+    private val onBindFailed: (AnnaHttpServer) -> Unit = {},
 ) {
     private val running = AtomicBoolean(false)
     private var serverSocket: ServerSocket? = null
@@ -29,24 +31,42 @@ class AnnaHttpServer(
     fun start() {
         if (!running.compareAndSet(false, true)) return
         Thread {
-            try {
-                val address = InetAddress.getByName(if (bindAll) "0.0.0.0" else "127.0.0.1")
-                val ss = ServerSocket(port, 16, address)
-                serverSocket = ss
-                Log.i(TAG, "listening on ${address.hostAddress}:$port")
-                while (running.get()) {
-                    val socket = try {
-                        ss.accept()
-                    } catch (e: Exception) {
-                        if (running.get()) Log.w(TAG, "accept failed: ${e.message}")
-                        null
-                    } ?: continue
-                    pool.execute { handle(socket) }
+            val address = if (bindAll) "0.0.0.0" else "127.0.0.1"
+            val ss = try {
+                val inet = InetAddress.getByName(address)
+                ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(inet, port), 16)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "server loop stopped: ${e.message}")
-            } finally {
+                Log.e(TAG, "bind failed on $address:$port: ${e.message}")
+                null
+            }
+            if (ss == null) {
                 running.set(false)
+                onBindFailed(this@AnnaHttpServer)
+            } else {
+                serverSocket = ss
+                Log.i(TAG, "listening on $address:$port")
+                try {
+                    while (running.get()) {
+                        val socket = try {
+                            ss.accept()
+                        } catch (e: Exception) {
+                            if (running.get()) Log.w(TAG, "accept failed: ${e.message}")
+                            null
+                        } ?: continue
+                        pool.execute { handle(socket) }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "server loop stopped: ${e.message}")
+                } finally {
+                    running.set(false)
+                    try {
+                        ss.close()
+                    } catch (_: Exception) {
+                    }
+                }
             }
         }.start()
     }

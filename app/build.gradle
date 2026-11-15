@@ -58,6 +58,8 @@ android {
     buildFeatures {
         viewBinding true
         aidl true
+        // AnnaRoutes uses BuildConfig.DEBUG to disable bearer auth in debug builds.
+        buildConfig true
     }
     testOptions {
         unitTests.all {

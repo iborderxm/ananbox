@@ -1,6 +1,7 @@
 package com.github.ananbox
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.MenuItem
 import androidx.appcompat.app.AlertDialog
@@ -20,6 +21,7 @@ class SettingsActivity : AppCompatActivity() {
             val shutdown = preferenceScreen.findPreference<Preference>(getString(R.string.settings_shutdown_key))
 
             shutdown?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                AnnaService.stop(requireContext().applicationContext)
                 activity?.finishAffinity()
                 Anbox.stopRuntime()
                 Anbox.stopContainer()
@@ -55,6 +57,29 @@ class SettingsActivity : AppCompatActivity() {
                     true
                 }
             }
+        }
+
+        private val prefListener =
+            SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+                if (key == AnnaCore.PREF_ALLOW_LAN &&
+                    prefs.getBoolean(AnnaCore.PREF_GATEWAY_ENABLED, false)
+                ) {
+                    AnnaCore.restartGateway()
+                }
+            }
+
+        override fun onResume() {
+            super.onResume()
+            if (AnnaCore.isInitialized) {
+                AnnaCore.prefs().registerOnSharedPreferenceChangeListener(prefListener)
+            }
+        }
+
+        override fun onPause() {
+            if (AnnaCore.isInitialized) {
+                AnnaCore.prefs().unregisterOnSharedPreferenceChangeListener(prefListener)
+            }
+            super.onPause()
         }
     }
 

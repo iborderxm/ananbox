@@ -43,7 +43,9 @@ class AnnaService : Service() {
     }
 
     override fun onDestroy() {
-        AnnaCore.stopGateway()
+        // The gateway is stopped explicitly by stop()/ACTION_STOP. Clearing it
+        // here would race with a fast stop->start and kill the freshly bound
+        // socket. When the process dies the listening socket goes with it.
         super.onDestroy()
     }
 
@@ -92,6 +94,7 @@ class AnnaService : Service() {
         }
 
         fun stop(context: Context) {
+            AnnaCore.stopGateway()
             context.stopService(Intent(context, AnnaService::class.java))
         }
     }
