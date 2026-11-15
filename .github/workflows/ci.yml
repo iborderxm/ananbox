@@ -104,6 +104,8 @@ jobs:
       - name: Build debug APK (NDK, both ABIs)
         run: |
           chmod +x ./gradlew
+          chmod +x app/src/main/cpp/anbox/scripts/gen-emugl-headers.sh \
+            app/src/main/cpp/anbox/scripts/gen-emugl-entries.py
           ./gradlew :app:assembleDebug --stacktrace --console=plain
 
       - name: Upload APK
