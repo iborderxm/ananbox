@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import android.view.SurfaceView
+import androidx.preference.PreferenceManager
 import java.io.File
 import java.security.SecureRandom
 
@@ -61,8 +62,13 @@ object AnnaCore {
         rootfs = rootfsDir
     }
 
+    /**
+     * Settings UI (PreferenceFragmentCompat) writes to the default
+     * preferences file, so the gateway must read the same one. Using a custom
+     * name here would leave every toggle stuck at its default value.
+     */
     fun prefs(): SharedPreferences =
-        appContext.getSharedPreferences("anna", Context.MODE_PRIVATE)
+        PreferenceManager.getDefaultSharedPreferences(appContext)
 
     fun attachSurface(view: SurfaceView) {
         surfaceView = view
