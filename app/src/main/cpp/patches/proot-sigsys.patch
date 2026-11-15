@@ -1,0 +1,145 @@
+diff --git a/src/tracee/event.c b/src/tracee/event.c
+index 5972cad..049d192 100644
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -30,6 +30,7 @@
+ #include <unistd.h>     /* fork(2), chdir(2), getpid(2), */
+ #include <string.h>     /* strcmp(3), */
+ #include <errno.h>      /* errno(3), */
++#include <signal.h>     /* SIGSYS, */
+ #include <stdbool.h>    /* bool, true, false, */
+ #include <assert.h>     /* assert(3), */
+ #include <stdlib.h>     /* atexit(3), getenv(3), */
+@@ -40,10 +41,13 @@
+ #include <libunwind-ptrace.h>
+ 
+ #include "tracee/event.h"
++#include "tracee/reg.h"
++#include "tracee/abi.h"
+ #include "cli/note.h"
+ #include "path/path.h"
+ #include "path/binding.h"
+ #include "syscall/syscall.h"
++#include "syscall/sysnum.h"
+ #include "syscall/seccomp.h"
+ #include "ptrace/wait.h"
+ #include "extension/extension.h"
+@@ -52,6 +56,12 @@
+ #include "attribute.h"
+ #include "compat.h"
+ 
++/* si_code for a SIGSYS raised by SECCOMP_RET_TRAP.  Not exposed by every
++ * combination of userspace headers.  */
++#ifndef SYS_SECCOMP
++#define SYS_SECCOMP 1
++#endif
++
+ 
+ /**
+  * Start @tracee->exe with the given @argv[].  This function
+@@ -424,8 +434,9 @@ int event_loop()
+                 siginfo_t siginfo;
+                 memset(&siginfo, 0, sizeof(siginfo_t));
+                 ptrace(PTRACE_GETSIGINFO, pid, NULL, &siginfo);
+-                if (siginfo.si_signo == 31 && siginfo.si_code == 1)
+-                    note(NULL, ERROR, SYSTEM, "bad syscall, si_syscall: %d, si_arch: %u", siginfo.si_syscall, siginfo.si_arch);
++                if (siginfo.si_signo == SIGSYS && siginfo.si_code == SYS_SECCOMP)
++                    note(NULL, INFO, INTERNAL, "seccomp SIGSYS for syscall %d (si_arch %u)",
++                         siginfo.si_syscall, siginfo.si_arch);
+                 // get backtrace of process, SIGSEGV, SIGBUS，SIGABRT
+                 if (siginfo.si_signo == 11 || siginfo.si_signo == 7 || siginfo.si_signo == 6) {
+                     print_backtrace(pid);
+@@ -458,6 +469,71 @@ int event_loop()
+ 	return last_exit_status;
+ }
+ 
++/**
++ * Android installs a seccomp filter on every app process.  That filter is
++ * evaluated before -- and takes precedence over -- the filter PRoot installs
++ * later for its ptrace acceleration, so a syscall the platform refuses (on
++ * arm64: setregid, syscall 143, called by zygote during class preloading)
++ * raises SIGSYS with si_code == SYS_SECCOMP even though PRoot would have
++ * emulated it happily.  The kernel already skipped the syscall and left the
++ * PC after it, so fabricate a result and swallow the signal instead of
++ * letting it kill the tracee.
++ *
++ * Credential-changing calls must report success under PRoot's fake root;
++ * everything else reports -ENOSYS so the caller uses its fallback path.
++ *
++ * Returns the signal to deliver: 0 when handled, SIGSYS otherwise.
++ */
++static int handle_seccomp_trap(Tracee *tracee)
++{
++	static const Sysnum setid_sysnums[] = {
++		PR_setregid, PR_setgid, PR_setreuid, PR_setuid,
++		PR_setresuid, PR_setresgid, PR_setfsuid, PR_setfsgid,
++		PR_setgroups,
++	};
++	siginfo_t siginfo;
++	word_t result;
++	long status;
++	size_t i;
++
++	memset(&siginfo, 0, sizeof(siginfo));
++	status = ptrace(PTRACE_GETSIGINFO, tracee->pid, NULL, &siginfo);
++	if (status < 0 || siginfo.si_code != SYS_SECCOMP)
++		return SIGSYS;
++
++	result = (word_t) -ENOSYS;
++	for (i = 0; i < sizeof(setid_sysnums) / sizeof(setid_sysnums[0]); i++) {
++		if ((word_t) siginfo.si_syscall ==
++		    detranslate_sysnum(get_abi(tracee), setid_sysnums[i])) {
++			result = 0;
++			break;
++		}
++	}
++
++	status = fetch_regs(tracee);
++	if (status < 0)
++		return SIGSYS;
++
++	/* Not inside a syscall: keep the cached register banks in sync so
++	 * only the result register is written back by push_regs().  */
++	save_current_regs(tracee, ORIGINAL);
++	tracee->restore_original_regs = false;
++	poke_reg(tracee, SYSARG_RESULT, result);
++
++	status = push_regs(tracee);
++	if (status < 0)
++		return SIGSYS;
++
++	VERBOSE(tracee, 1,
++		"vpid %" PRIu64 ": seccomp trap for syscall %d answered with %ld",
++		tracee->vpid, siginfo.si_syscall, (long) result);
++
++	/* Continue at the instruction after the skipped syscall.  */
++	tracee->restart_how = PTRACE_CONT;
++	tracee->sysexit_pending = false;
++	return 0;
++}
++
+ /**
+  * For kernels >= 4.8.0
+  * Handle the current event (@tracee_status) of the given @tracee.
+@@ -673,6 +749,10 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee, int tracee_status)
+ 			}
+ 			break;
+ 
++		case SIGSYS:
++			signal = handle_seccomp_trap(tracee);
++			break;
++
+ 		default:
+ 			/* Deliver this signal as-is.  */
+ 			break;
+@@ -902,6 +982,10 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
+ 			}
+ 			break;
+ 
++		case SIGSYS:
++			signal = handle_seccomp_trap(tracee);
++			break;
++
+ 		default:
+ 			/* Deliver this signal as-is.  */
+ 			break;
