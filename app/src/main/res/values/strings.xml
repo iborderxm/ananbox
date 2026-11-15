@@ -29,4 +29,6 @@
     <string name="anna_exec_summary">Let the gateway run guest commands, start or install apps and write files. Anyone holding the token gets full control of the container.</string>
     <string name="anna_exec_confirm_title">Enable console access?</string>
     <string name="anna_exec_confirm_message">This lets the agent run commands inside the container, install APKs and modify files. Only enable it if you trust every client that knows the token.</string>
+    <string name="anna_seccomp_title">PRoot seccomp accelerator</string>
+    <string name="anna_seccomp_summary">Faster syscall tracing, but crashes the guest on hosts that already apply a seccomp filter. Off by default; overrides the ROM run.sh setting and needs a container restart.</string>
 </resources>

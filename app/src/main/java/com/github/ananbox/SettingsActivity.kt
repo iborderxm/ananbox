@@ -57,6 +57,12 @@ class SettingsActivity : AppCompatActivity() {
                     true
                 }
             }
+
+            val seccomp = preferenceScreen.findPreference<SwitchPreferenceCompat>(AnnaCore.PREF_PROOT_SECCOMP)
+            seccomp?.setOnPreferenceChangeListener { _, newValue ->
+                Anbox.setProotSeccompEnabled(newValue as? Boolean == true)
+                true
+            }
         }
 
         private val prefListener =

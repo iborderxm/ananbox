@@ -38,7 +38,7 @@ object GuestShell {
             prootBinary = proot,
             tmpDir = tmpDir,
             command = command,
-            kernelRelease = System.getProperty("os.version") ?: "",
+            seccompEnabled = AnnaCore.isProotSeccompEnabled(),
         )
 
         val process = ProcessBuilder(spec.args).apply {

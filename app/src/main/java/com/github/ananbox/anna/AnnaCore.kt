@@ -24,6 +24,7 @@ object AnnaCore {
     const val PREF_ALLOW_LAN = "anna_allow_lan"
     const val PREF_EXEC_ENABLED = "anna_exec_enabled"
     const val PREF_PORT = "anna_port"
+    const val PREF_PROOT_SECCOMP = "anna_proot_seccomp"
 
     @Volatile
     lateinit var appContext: Context
@@ -69,6 +70,15 @@ object AnnaCore {
      */
     fun prefs(): SharedPreferences =
         PreferenceManager.getDefaultSharedPreferences(appContext)
+
+    /**
+     * PRoot's seccomp accelerator is off unless the user explicitly opts in.
+     * Both the container's proot (via the host process environment set in JNI)
+     * and the gateway's one-shot proot read this single setting, so it takes
+     * precedence over the ROM's run.sh kernel-version check.
+     */
+    fun isProotSeccompEnabled(): Boolean =
+        prefs().getBoolean(PREF_PROOT_SECCOMP, false)
 
     fun attachSurface(view: SurfaceView) {
         surfaceView = view
