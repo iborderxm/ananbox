@@ -1,0 +1,32 @@
+<resources>
+    <string name="app_name">Ananbox</string>
+    <string name="title_settings">Settings</string>
+    <string name="title_activity_settings">SettingsActivity</string>
+    <string name="settings_shutdown_key">shutdown</string>
+    <string name="settings_shutdown_title">Shutdown</string>
+    <string name="settings_shutdown_summary">Shutdown Ananbox immediately</string>
+    <string name="rom_installer_title">Install rom</string>
+    <string name="rom_installer_message">Please select a rom file (.7z) on your phone</string>
+    <string name="rom_installer_message_download">Download the rom for this device, or select a .7z file on your phone</string>
+    <string name="rom_installer_download">Download</string>
+    <string name="rom_installer_install">Select a file</string>
+    <string name="rom_installer_downloading_title">Downloading</string>
+    <string name="rom_installer_downloading_msg">Downloading rom file..</string>
+    <string name="rom_installer_download_failed_title">Download failed</string>
+    <string name="rom_installer_download_failed_msg">Could not download or verify the rom. Check your connection, or select a .7z file manually.</string>
+    <string name="rom_installer_extracting_title">Extracting</string>
+    <string name="rom_installer_extracting_msg">Extracting rom file..</string>
+    <string name="cancel">Cancel</string>
+    <string name="anna_channel_name">Agent gateway</string>
+    <string name="anna_channel_description">Keeps the Ananbox agent gateway reachable while the container runs</string>
+    <string name="anna_notification_title">Ananbox agent gateway</string>
+    <string name="anna_notification_text">The local agent API is listening</string>
+    <string name="anna_gateway_title">Agent gateway</string>
+    <string name="anna_gateway_summary">Expose the container to external agents over a local HTTP API</string>
+    <string name="anna_lan_title">Allow LAN access</string>
+    <string name="anna_lan_summary">Listen on all interfaces instead of 127.0.0.1 (requires bearer token)</string>
+    <string name="anna_exec_title">Allow console access</string>
+    <string name="anna_exec_summary">Let the gateway run guest commands, start or install apps and write files. Anyone holding the token gets full control of the container.</string>
+    <string name="anna_exec_confirm_title">Enable console access?</string>
+    <string name="anna_exec_confirm_message">This lets the agent run commands inside the container, install APKs and modify files. Only enable it if you trust every client that knows the token.</string>
+</resources>
