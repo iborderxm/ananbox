@@ -40,7 +40,9 @@ jobs:
         run: ./gradlew :app:assembleDebug -PskipNative --stacktrace --console=plain
 
       - name: Run host unit tests
-        run: ./gradlew :app:testDebugUnitTest -PskipNative --stacktrace --console=plain
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest -PskipNative --stacktrace --console=plain
 
       - name: Upload APK
         if: always()
