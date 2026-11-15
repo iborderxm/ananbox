@@ -17,5 +17,6 @@ local.properties
 /app/src/main/cpp/external/
 /app/src/main/cpp/boost-*.tar.xz
 /app/src/main/cpp/.boost-prepare.lock
+/app/src/main/cpp/.cache/
 __pycache__/
 *.pyc
