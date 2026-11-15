@@ -24,7 +24,7 @@ object GuestCommand {
         prootBinary: File,
         tmpDir: File,
         command: String,
-        seccompEnabled: Boolean = false,
+        kernelRelease: String,
     ): Spec {
         val dir = rootfs.parentFile ?: rootfs
         val binds = listOf(
@@ -62,14 +62,18 @@ object GuestCommand {
             "EXTERNAL_STORAGE" to "/sdcard",
             "PROOT_TMP_DIR" to tmpDir.path
         )
-        // PRoot's seccomp accelerator stacks a second seccomp-bpf filter on
-        // top of the one Android already installs for every app process. On
-        // hosts such as 5.10.43 it fails with EPERM and delivers SIGSYS to the
-        // tracee ("bad syscall ... Permission denied"), killing zygote during
-        // class preload. This setting is shared with the container's proot,
-        // which receives it through the host process environment.
-        if (!seccompEnabled) env["PROOT_NO_SECCOMP"] = "1"
+        if (needsNoSeccomp(kernelRelease)) env["PROOT_NO_SECCOMP"] = "1"
 
         return Spec(prootBinary.path, args, env)
+    }
+
+    /** proot's seccomp accelerator needs Linux >= 4.8; older kernels must opt out. */
+    fun needsNoSeccomp(kernelRelease: String): Boolean {
+        val parts = kernelRelease.split(".", limit = 3)
+        val major = parts.getOrNull(0)?.toIntOrNull() ?: return true
+        if (major < 4) return true
+        if (major > 4) return false
+        val minor = parts.getOrNull(1)?.toIntOrNull() ?: return true
+        return minor < 8
     }
 }

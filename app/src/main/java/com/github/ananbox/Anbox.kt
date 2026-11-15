@@ -14,7 +14,6 @@ object Anbox: View.OnTouchListener {
 
     external fun stringFromJNI(): String
     external fun setPath(path: String)
-    external fun setProotSeccompEnabled(enabled: Boolean)
     external fun startRuntime()
     external fun destroyWindow()
     external fun stopRuntime()

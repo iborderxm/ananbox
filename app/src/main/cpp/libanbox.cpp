@@ -1,7 +1,6 @@
 #include <jni.h>
 #include <string>
 #include <cstdint>
-#include <stdlib.h>
 #include <unistd.h>
 #include <android/input.h>
 #include "anbox/graphics/emugl/Renderer.h"
@@ -341,21 +340,6 @@ Java_com_github_ananbox_Anbox_setPath(JNIEnv *env, jobject thiz, jstring path_) 
     const char *pathStr = env->GetStringUTFChars(path_, 0);
     memcpy(path, pathStr, strlen(pathStr) + 1);
     env->ReleaseStringUTFChars(path_, pathStr);
-}
-
-// startContainer() forks and execs `sh run.sh` through execl(), which inherits
-// this process' environment. run.sh only exports PROOT_NO_SECCOMP on kernels
-// older than 4.8, so on modern hosts this setting decides the accelerator and
-// takes precedence over the script's own kernel-version check.
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_setProotSeccompEnabled(JNIEnv *env, jobject thiz, jboolean enabled) {
-    if (enabled == JNI_TRUE) {
-        unsetenv("PROOT_NO_SECCOMP");
-    } else {
-        setenv("PROOT_NO_SECCOMP", "1", 1);
-    }
-    ALOGI("proot seccomp accelerator %s", enabled == JNI_TRUE ? "enabled" : "disabled");
 }
 
 static inline jclass FindClassOrDie(JNIEnv* env, const char* class_name) {

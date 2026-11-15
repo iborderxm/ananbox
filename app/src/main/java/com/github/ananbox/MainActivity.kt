@@ -102,7 +102,6 @@ class MainActivity : AppCompatActivity() {
         Anbox.setPath(filesDir.path)
 
         AnnaCore.init(applicationContext, File(filesDir, "rootfs"))
-        Anbox.setProotSeccompEnabled(AnnaCore.isProotSeccompEnabled())
         if (File(filesDir, "rootfs").isDirectory) {
             BinderBridge.prepare(File(filesDir, "rootfs"))
         }
