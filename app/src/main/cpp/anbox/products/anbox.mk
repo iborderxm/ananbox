@@ -57,19 +57,22 @@ PRODUCT_CHARACTERISTICS := emulator
 PRODUCT_AAPT_CONFIG := normal
 
 PRODUCT_COPY_FILES += \
-	vendor/anbox/scripts/anbox-init.sh:root/anbox-init.sh \
+	vendor/anbox/scripts/run.sh:root/run.sh \
+	vendor/anbox/android/anboxd.rc:system/etc/init/anboxd.rc \
 	vendor/anbox/products/anbox.xml:system/etc/permissions/anbox.xml
 
 PRODUCT_PACKAGES += \
 	hwcomposer.anbox \
-	Launcher2
+	Launcher2 \
+	CMFileManager 
 
 PRODUCT_PROPERTY_OVERRIDES += \
 	ro.hardware=goldfish \
 	ro.hardware.hwcomposer=anbox \
 	ro.kernel.qemu.gles=1 \
-	ro.kernel.qemu=1
-	ro.adb.qemud=1
+	ro.kernel.qemu=1 \
+	ro.adb.qemud=1 \
+	service.adb.tcp.port=5555 
 
 # Disable any software key elements in the UI
 PRODUCT_PROPERTY_OVERRIDES += \

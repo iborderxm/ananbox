@@ -20,3 +20,6 @@ local.properties
 /app/src/main/cpp/.cache/
 __pycache__/
 *.pyc
+
+# Log exports pulled from a device for analysis; local artifacts only
+/logs-export/
