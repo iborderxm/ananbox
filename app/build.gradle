@@ -99,6 +99,13 @@ tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.con
     dependsOn 'copyRomRunScript'
 }
 
+// JVM unit tests do not put Android assets on their classpath by default, so
+// RomScriptsTest cannot see run.sh unless the generated asset dir is exposed.
+tasks.withType(Test).configureEach {
+    dependsOn 'copyRomRunScript'
+    classpath += files(romAssetsDir)
+}
+
 dependencies {
 
     implementation 'androidx.core:core-ktx:1.9.0'

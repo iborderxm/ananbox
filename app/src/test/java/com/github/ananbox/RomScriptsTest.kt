@@ -15,6 +15,7 @@ class RomScriptsTest {
 
     private fun bundledRunSh(): String {
         val loader = javaClass.classLoader
+            ?: throw AssertionError("test class loader is unavailable")
         // Depending on the AGP version the assets are exposed either directly
         // or below an "assets/" prefix.
         val stream = loader.getResourceAsStream(RomScripts.RUN_SH_ASSET)
