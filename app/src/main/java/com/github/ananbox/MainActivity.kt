@@ -28,7 +28,6 @@ import com.github.ananbox.databinding.ActivityMainBinding
 import com.hzy.libp7zip.P7ZipApi
 import java.io.File
 import java.io.IOException
-import java.lang.String
 import java.util.Locale
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
