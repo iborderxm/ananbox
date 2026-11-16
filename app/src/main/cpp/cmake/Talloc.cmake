@@ -3,8 +3,34 @@ set(TALLOC_SRC ${CMAKE_CURRENT_BINARY_DIR}/talloc-prefix/src/talloc)
 set(TALLOC_BIN ${CMAKE_CURRENT_BINARY_DIR}/talloc-prefix/src/talloc-build)
 set(TALLOC_STATIC_LIB ${TALLOC_BIN}/lib/libtalloc.a)
 set(TALLOC_INCLUDE_DIRS ${TALLOC_BIN}/include)
+# PRoot >= 5.5.0 hard-fails its build when pkg-config cannot find talloc.pc
+# (src/GNUmakefile: `$(error talloc development files not found by pkg-config)`).
+# The talloc build below deliberately does not run `make install` -- it
+# assembles a static libtalloc.a by hand so that no shared libtalloc.so ends
+# up next to the host's own copy -- so talloc.pc has to be provided here.
+set(TALLOC_PKGCONFIG_DIR ${TALLOC_BIN}/lib/pkgconfig)
 
 set(TALLOC_VERSION 2.4.1)
+
+# It is written at configure time with file(WRITE) rather than from the
+# ExternalProject install step: every path in it is already known here, and
+# a shell "printf" would have to carry the newlines as "\n" escapes, which
+# CMake expands into real newlines inside a quoted argument. That turns the
+# command into a multi-line string and breaks the generated build.ninja
+# (ninja then fails with "build.ninja:625: expected '=', got ':'").
+file(WRITE "${TALLOC_PKGCONFIG_DIR}/talloc.pc"
+"prefix=${TALLOC_BIN}
+libdir=${TALLOC_BIN}/lib
+includedir=${TALLOC_INCLUDE_DIRS}
+
+Name: talloc
+Description: A hierarchical pool based memory system with destructors
+Version: ${TALLOC_VERSION}
+Libs: -L${TALLOC_BIN}/lib -ltalloc
+Cflags: -I${TALLOC_INCLUDE_DIRS}
+URL: http://talloc.samba.org/
+")
+
 set(TALLOC_ARCHIVE talloc-${TALLOC_VERSION}.tar.gz)
 # Hash of the official upstream archive. Every candidate URL must serve this
 # exact file; URL_HASH makes CMake verify the archive so a stale, repacked or
