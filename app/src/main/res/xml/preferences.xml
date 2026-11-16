@@ -10,20 +10,20 @@
         app:key="anna_gateway_enabled"
         app:title="@string/anna_gateway_title"
         app:summary="@string/anna_gateway_summary"
-        app:defaultValue="false"/>
+        app:defaultValue="@bool/anna_gateway_default"/>
 
     <SwitchPreferenceCompat
         app:key="anna_allow_lan"
         app:title="@string/anna_lan_title"
         app:summary="@string/anna_lan_summary"
         app:dependency="anna_gateway_enabled"
-        app:defaultValue="false"/>
+        app:defaultValue="@bool/anna_lan_default"/>
 
     <SwitchPreferenceCompat
         app:key="anna_exec_enabled"
         app:title="@string/anna_exec_title"
         app:summary="@string/anna_exec_summary"
         app:dependency="anna_gateway_enabled"
-        app:defaultValue="false"/>
+        app:defaultValue="@bool/anna_exec_default"/>
 
 </PreferenceScreen>

@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(applicationContext, SettingsActivity::class.java))
         }
 
-        if (AnnaCore.prefs().getBoolean(AnnaCore.PREF_GATEWAY_ENABLED, false)) {
+        if (AnnaCore.prefs().getBoolean(AnnaCore.PREF_GATEWAY_ENABLED, BuildConfig.DEBUG)) {
             AnnaService.start(this)
         }
     }

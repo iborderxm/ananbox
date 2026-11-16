@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug builds expose the Anna gateway on the LAN with exec enabled. -->
+    <bool name="anna_gateway_default">true</bool>
+    <bool name="anna_lan_default">true</bool>
+    <bool name="anna_exec_default">true</bool>
+</resources>

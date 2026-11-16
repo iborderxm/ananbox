@@ -230,7 +230,7 @@ class AnnaRoutes(private val core: AnnaCore) {
     // ---------------------------------------------------------------- exec
 
     private fun execEnabled(): Boolean =
-        core.prefs().getBoolean(AnnaCore.PREF_EXEC_ENABLED, false)
+        core.prefs().getBoolean(AnnaCore.PREF_EXEC_ENABLED, BuildConfig.DEBUG)
 
     private fun requireExec(): Response? = if (execEnabled()) null else Response.json(
         403,

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import android.view.SurfaceView
 import androidx.preference.PreferenceManager
+import com.github.ananbox.BuildConfig
 import java.io.File
 import java.security.SecureRandom
 
@@ -87,7 +88,7 @@ object AnnaCore {
             return
         }
         if (server != null) return
-        val bindAll = prefs().getBoolean(PREF_ALLOW_LAN, false)
+        val bindAll = prefs().getBoolean(PREF_ALLOW_LAN, BuildConfig.DEBUG)
         val port = prefs().getInt(PREF_PORT, DEFAULT_PORT)
         val routes = AnnaRoutes(this)
         val httpServer = AnnaHttpServer(routes, bindAll, port, ::onBindFailed)

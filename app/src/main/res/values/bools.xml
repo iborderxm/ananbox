@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Release builds keep the Anna gateway, LAN binding and exec API off. -->
+    <bool name="anna_gateway_default">false</bool>
+    <bool name="anna_lan_default">false</bool>
+    <bool name="anna_exec_default">false</bool>
+</resources>

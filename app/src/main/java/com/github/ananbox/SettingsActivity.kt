@@ -62,7 +62,7 @@ class SettingsActivity : AppCompatActivity() {
         private val prefListener =
             SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
                 if (key == AnnaCore.PREF_ALLOW_LAN &&
-                    prefs.getBoolean(AnnaCore.PREF_GATEWAY_ENABLED, false)
+                    prefs.getBoolean(AnnaCore.PREF_GATEWAY_ENABLED, BuildConfig.DEBUG)
                 ) {
                     AnnaCore.restartGateway()
                 }
