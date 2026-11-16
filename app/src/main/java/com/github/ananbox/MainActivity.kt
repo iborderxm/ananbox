@@ -8,6 +8,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -146,11 +147,12 @@ class MainActivity : AppCompatActivity() {
             val uri = data.data ?: return
             val progressDialog = showExtractingDialog()
             thread {
-                val romFile = File(filesDir, "rom-archive")
+                val romFile = File(filesDir, "rom-archive" + archiveExtension(uri))
                 contentResolver.openInputStream(uri)?.use { input ->
                     romFile.outputStream().use { output -> input.copyTo(output) }
                 }
                 extractRom(romFile, progressDialog)
+
             }
         }
     }
@@ -210,7 +212,7 @@ class MainActivity : AppCompatActivity() {
             show()
         }
         thread {
-            val target = File(filesDir, "rom-archive")
+            val target = File(filesDir, "rom-archive" + archiveExtension(asset.fileName))
             val ok = RomDownloader.download(asset, target) { progress ->
                 runOnUiThread {
                     if (progress.percent >= 0) {
@@ -265,6 +267,14 @@ class MainActivity : AppCompatActivity() {
             return
         }
         staging.deleteRecursively()
+        // The container is started with "/init" inside the guest root: if it
+        // is missing the archive did not expand (7-Zip can stop after the
+        // gzip layer), and the failure would otherwise only show up as a
+        // silent "sh: can't open run.sh" later on.
+        if (!File(target, "init").exists()) {
+            Log.e(TAG, "extracted rom has no init, archive was not expanded")
+            return
+        }
         // The container is launched with "sh <rootfs>/run.sh", so the ROM
         // archive has to carry that script. A third-party archive may omit
         // it; supply the copy bundled in the APK in that case.
@@ -276,6 +286,23 @@ class MainActivity : AppCompatActivity() {
             tmpDir.mkdirs()
             recreate()
         }
+    }
+
+    /**
+     * Keeps the extension of the picked archive in the temporary file name.
+     *
+     * 7-Zip writes the decompressed member of a gzip stream under the name
+     * recorded in the gzip header. When that name equals the name of the
+     * archive being extracted it renames the member to "<name>~" and stops
+     * there, leaving the tar unexpanded. A distinct name avoids the clash.
+     */
+    private fun archiveExtension(uri: Uri): String = archiveExtension(uri.lastPathSegment)
+
+    private fun archiveExtension(name: String?): String {
+        val n = name ?: return ".7z"
+        val dot = n.lastIndexOf('.')
+        if (dot < 0 || n.length - dot > 6) return ".7z"
+        return n.substring(dot)
     }
 
     /**
@@ -295,22 +322,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * If the extraction produced exactly one file and that file is a tar
-     * archive, unpack it in place. This covers .tar.gz ROMs where 7-Zip
-     * stops after the gzip layer.
+     * Unpacks any tar archive that is still sitting in the staging directory.
+     *
+     * 7-Zip does not always chain the gzip and tar decoders: when the
+     * decompressed member carries the same name as the archive itself it
+     * writes it as "<name>~" and stops there. The tar is then left unexpanded,
+     * so the guest would end up without its /init. Tar archives are therefore
+     * recognised by their content ("ustar" at offset 257) rather than by
+     * their file name.
      */
     private fun unpackNestedTar(dir: File, cpu: Int) {
-        val entries = dir.listFiles() ?: return
-        if (entries.size != 1) return
-        val only = entries[0]
-        if (!only.isFile || !only.name.endsWith(".tar", ignoreCase = true)) return
-        P7ZipApi.executeCommand(
-            String.format(
-                Locale.US, "7z x -mmt=%d -aoa '%s' '-o%s'",
-                cpu, only.absolutePath, dir.absolutePath
+        val candidates = dir.listFiles()?.filter { it.isFile } ?: return
+        for (candidate in candidates) {
+            if (!isTarArchive(candidate)) continue
+            val out = File(dir, candidate.name + ".d")
+            out.mkdirs()
+            P7ZipApi.executeCommand(
+                String.format(
+                    Locale.US, "7z x -mmt=%d -aoa '%s' '-o%s'",
+                    cpu, candidate.absolutePath, out.absolutePath
+                )
             )
-        )
-        only.delete()
+            // Move the expanded tree up and drop the intermediate tar.
+            out.listFiles()?.forEach { it.renameTo(File(dir, it.name)) }
+            out.deleteRecursively()
+            candidate.delete()
+        }
+    }
+
+    /**
+     * POSIX/GNU tar stores the "ustar" magic at offset 257 of the first
+     * header block.
+     */
+    private fun isTarArchive(file: File): Boolean {
+        if (file.length() < 512) return false
+        return try {
+            file.inputStream().use { input ->
+                input.skip(257)
+                val magic = ByteArray(5)
+                input.read(magic) == 5 && String(magic) == "ustar"
+            }
+        } catch (e: IOException) {
+            false
+        }
     }
 
     /**
