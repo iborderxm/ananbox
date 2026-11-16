@@ -99,11 +99,13 @@ tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.con
     dependsOn 'copyRomRunScript'
 }
 
-// JVM unit tests do not put Android assets on their classpath by default, so
-// RomScriptsTest cannot see run.sh unless the generated asset dir is exposed.
+// JVM unit tests do not put Android assets on their classpath, and AGP resets
+// the test classpath after configureEach, so adding the asset dir to classpath
+// is not reliable. Pass the generated file path explicitly; it is the very
+// same file copyRomRunScript bundles into the APK.
 tasks.withType(Test).configureEach {
     dependsOn 'copyRomRunScript'
-    classpath += files(romAssetsDir)
+    systemProperty 'rom.runsh.path', romAssetsDir.resolve('run.sh').absolutePath
 }
 
 dependencies {

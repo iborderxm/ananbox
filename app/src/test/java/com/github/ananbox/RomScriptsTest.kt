@@ -14,6 +14,16 @@ import java.io.File
 class RomScriptsTest {
 
     private fun bundledRunSh(): String {
+        // Gradle passes the path of the generated copy that is bundled into
+        // the APK assets. AGP does not expose assets on the JVM test classpath,
+        // so prefer that file over a classloader resource lookup.
+        val candidates = listOfNotNull(
+            System.getProperty("rom.runsh.path")?.let(::File),
+            File("build/generated/romAssets/run.sh"),
+        )
+        for (candidate in candidates) {
+            if (candidate.isFile) return candidate.readText()
+        }
         val loader = javaClass.classLoader
             ?: throw AssertionError("test class loader is unavailable")
         // Depending on the AGP version the assets are exposed either directly
