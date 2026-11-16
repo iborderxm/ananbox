@@ -25,27 +25,25 @@ ExternalProject_Add(
         # src/extension/care/care.c. Without it the build fails on the
         # missing uthash.h.
         GIT_SUBMODULES_RECURSE ON
-        # The pinned revision has no SIGSYS handler for the seccomp filter the
-        # Android host installs on app processes: zygote dies on setregid
-        # (syscall 143) and init restarts it forever. Apply the local fix,
-        # unless the pinned revision already carries it (i.e. after the fix is
-        # pushed upstream and GIT_TAG is bumped), so this stays idempotent.
-        PATCH_COMMAND sh -c "grep -q handle_seccomp_trap src/tracee/event.c || (echo '=== applying proot-sigsys.patch ===' && patch -p1 --forward < ${CMAKE_SOURCE_DIR}/patches/proot-sigsys.patch)"
-        # Ananbox/proot is not plain upstream: on top of v5.4.0 it carries 11
-        # Android-specific commits (capability emulation, PR_CAPBSET_DROP and
-        # unshare(2) bypasses, mount --bind through the binding mechanism).
-        # Upstream v5.5.0 has none of them, so the guest Zygote dies on
-        # "capset failed" and init restarts it forever.  Transplant those
-        # adaptations; the grep guard keeps it idempotent.
+        # NOTE: ExternalProject accepts only ONE PATCH_COMMAND.  A second one
+        # is merged into the first as an extra argument of "sh -c" and is
+        # silently dropped -- the second patch would then never be applied
+        # while the build still succeeds.  Both patches are applied by a
+        # single helper script instead.
         #
-        # The guard must look for a token that only exists after the patch is
-        # applied.  "keepCaps" is a new field of the fake_id0 extension's
-        # Config struct; "HAS_CAP" would match the upstream file too (it
-        # appears in comments) and would silently skip the patch.
+        # The script applies:
+        #  - proot-sigsys.patch: handle the SIGSYS raised by the seccomp
+        #    filter the Android host installs on app processes, otherwise
+        #    the guest zygote dies on setregid and init restarts it forever;
+        #  - proot-android-adapt.patch: transplant the Android-specific
+        #    commits that Ananbox/proot carries on top of upstream (capability
+        #    emulation, PR_CAPBSET_DROP and unshare(2) bypasses, mount --bind
+        #    through the binding mechanism).  Upstream v5.5.0 has none of them,
+        #    so the guest zygote dies on "capset failed".
         #
-        # The echo makes the CI log state explicitly which patches were
-        # applied, so a silently skipped patch is visible right away.
-        PATCH_COMMAND sh -c "grep -q keepCaps src/extension/fake_id0/fake_id0.c || (echo '=== applying proot-android-adapt.patch ===' && patch -p1 --forward < ${CMAKE_SOURCE_DIR}/patches/proot-android-adapt.patch)"
+        # Each patch is guarded by a grep for a token that only exists once
+        # that patch has been applied, so the script is idempotent.
+        PATCH_COMMAND sh ${CMAKE_SOURCE_DIR}/patches/apply-proot-patches.sh ${CMAKE_SOURCE_DIR}/patches
         CONFIGURE_COMMAND cd ${PROOT_SRC} && ${PROOT_PKG_CONFIG_PATH} make clean
         # HAS_SWIG/HAS_PYTHON_CONFIG are cleared on purpose: when a host swig and
         # python3-config are present (e.g. CI runners) proot tries to build its
