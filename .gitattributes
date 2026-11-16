@@ -1,0 +1,4 @@
+# Shell scripts are executed by /system/bin/sh inside the guest and by sh on
+# the build host, so they must keep LF endings: a stray CR would become part
+# of the command line and break the script.
+*.sh text eol=lf

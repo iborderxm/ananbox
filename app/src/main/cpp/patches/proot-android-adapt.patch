@@ -1,5 +1,5 @@
 diff --git a/src/extension/fake_id0/fake_id0.c b/src/extension/fake_id0/fake_id0.c
-index f51ab46..92b8886 100644
+index f51ab46..9a758e9 100644
 --- a/src/extension/fake_id0/fake_id0.c
 +++ b/src/extension/fake_id0/fake_id0.c
 @@ -31,8 +31,11 @@
@@ -34,15 +34,7 @@ index f51ab46..92b8886 100644
      { PR_chmod, FILTER_SYSEXIT },
      { PR_chown, FILTER_SYSEXIT },
      { PR_chown32, FILTER_SYSEXIT },
-@@ -129,6 +138,7 @@ static FilteredSysnum filtered_sysnums[] = {
-     { PR_stat64, FILTER_SYSEXIT },
-     { PR_statfs, FILTER_SYSEXIT },
-     { PR_statfs64, FILTER_SYSEXIT },
-+    { PR_prctl,		FILTER_SYSEXIT },
-     FILTERED_SYSNUM_END,
- };
- 
-@@ -327,32 +337,60 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
+@@ -327,32 +336,60 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
  /**
   * Emulate setuid(2) and setgid(2).
   */
@@ -120,7 +112,7 @@ index f51ab46..92b8886 100644
  	config->fs ## id = id;						\
  									\
  	poke_reg(tracee, SYSARG_RESULT, 0);				\
-@@ -395,7 +433,7 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
+@@ -395,7 +432,7 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
  	 *								\
  	 * Is it possible to "ruid <- euid" and "euid <- suid" at the	\
  	 * same time?  */						\
@@ -129,7 +121,7 @@ index f51ab46..92b8886 100644
  		|| (UNCHANGED_ID(e ## id) && UNCHANGED_ID(r ## id))	\
  		|| (r ## id == config->e ## id && (e ## id == config->r ## id || UNCHANGED_ID(e ## id))) \
  		|| (e ## id == config->r ## id && (r ## id == config->e ## id || UNCHANGED_ID(r ## id))) \
-@@ -492,7 +530,7 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
+@@ -492,7 +529,7 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
  	 * superuser or if fsuid matches either the real user ID,	\
  	 * effective user ID, saved set-user-ID, or the current value	\
  	 * of fsuid." -- man setfsuid */				\
@@ -138,7 +130,7 @@ index f51ab46..92b8886 100644
  		|| fs ## type ## id == config->fs ## type ## id		\
  		|| EQUALS_ANY_ID(fs ## type ## id, type));		\
  	if (allowed)							\
-@@ -589,7 +627,6 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
+@@ -589,7 +626,6 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
      case PR_setgroups32:
      case PR_mknod:
      case PR_mknodat:
@@ -146,7 +138,7 @@ index f51ab46..92b8886 100644
      case PR_setxattr:
      case PR_lsetxattr:
      case PR_fsetxattr:
-@@ -612,12 +649,68 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
+@@ -612,12 +648,53 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
  
  	    /* Force success if the tracee was supposed to have
  	     * the capability.  */
@@ -197,26 +189,11 @@ index f51ab46..92b8886 100644
 +	poke_reg(tracee, SYSARG_RESULT, 0);
 +	return 0;
 +}
-+    case PR_prctl: {
-+
-+		word_t option;
-+		option = peek_reg(tracee, ORIGINAL, SYSARG_1);
-+		/* we don't have file capabilities */
-+		if ((int)option == PR_CAPBSET_DROP || (int)option == PR_CAPBSET_READ) {
-+		    poke_reg(tracee, SYSARG_RESULT, -EINVAL);
-+		    return 0;
-+		}
-+		if ((int)option == PR_SET_KEEPCAPS) {
-+		    config->keepCaps = peek_reg(tracee, ORIGINAL, SYSARG_1);
-+		    poke_reg(tracee, SYSARG_RESULT, 0);
-+		}
-+		return 0;
-+	}
 +
      case PR_fstatat64:
      case PR_newfstatat:
      case PR_stat64:
-@@ -817,6 +910,10 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
+@@ -817,6 +894,10 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
  	    config->egid = gid;
  	    config->sgid = gid;
  	    config->fsgid = gid;
@@ -227,7 +204,7 @@ index f51ab46..92b8886 100644
  
  	    extension->filtered_sysnums = filtered_sysnums;
  	    return 0;
-@@ -854,7 +951,6 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
+@@ -854,7 +935,6 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
  
  	    /* Force permissions if the tracee was supposed to
  	     * have the capability.  */
@@ -235,7 +212,7 @@ index f51ab46..92b8886 100644
  		override_permissions(tracee, (char *) data1, (bool) data2);
  	    return 0;
  	}
-@@ -889,6 +985,7 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
+@@ -889,6 +969,7 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
  
  	    /* This has to be done before PRoot pushes the load
  	     * script into tracee's stack.  */
@@ -244,10 +221,10 @@ index f51ab46..92b8886 100644
  
  	    status = stat(tracee->load_info->host_path, &mode);
 diff --git a/src/syscall/enter.c b/src/syscall/enter.c
-index dc8f3e8..9721002 100644
+index dc8f3e8..555180f 100644
 --- a/src/syscall/enter.c
 +++ b/src/syscall/enter.c
-@@ -30,6 +30,11 @@
+@@ -30,6 +30,14 @@
  #include <string.h>		/* strcpy */
  #include <unistd.h>		/* read(2), write(2), close(2), */
  #include <sys/prctl.h>		/* PR_SET_DUMPABLE */
@@ -256,10 +233,13 @@ index dc8f3e8..9721002 100644
 +#ifndef PR_CAPBSET_DROP
 +#define PR_CAPBSET_DROP 4
 +#endif
++#ifndef PR_CAPBSET_READ
++#define PR_CAPBSET_READ 2
++#endif
  #include "syscall/syscall.h"
  #include "syscall/sysnum.h"
  #include "syscall/socket.h"
-@@ -44,6 +49,7 @@
+@@ -44,6 +52,7 @@
  #include "tracee/mem.h"
  #include "tracee/abi.h"
  #include "path/path.h"
@@ -267,7 +247,7 @@ index dc8f3e8..9721002 100644
  #include "path/canon.h"
  #include "path/temp.h"
  #include "arch.h"
-@@ -586,6 +592,7 @@ int translate_syscall_enter(Tracee *tracee)
+@@ -586,6 +595,7 @@ int translate_syscall_enter(Tracee *tracee)
  
      case PR_mount:
  	status = get_sysarg_path(tracee, path, SYSARG_1);
@@ -275,7 +255,7 @@ index dc8f3e8..9721002 100644
  	if (status < 0)
  	    break;
  
-@@ -598,6 +605,20 @@ int translate_syscall_enter(Tracee *tracee)
+@@ -598,6 +608,20 @@ int translate_syscall_enter(Tracee *tracee)
  	}
  
  	status = translate_sysarg(tracee, SYSARG_2, REGULAR);
@@ -296,7 +276,7 @@ index dc8f3e8..9721002 100644
  	break;
  
      case PR_openat:
-@@ -677,6 +698,12 @@ int translate_syscall_enter(Tracee *tracee)
+@@ -677,6 +701,12 @@ int translate_syscall_enter(Tracee *tracee)
  	    translate_path2(tracee, newdirfd, newpath, SYSARG_3, SYMLINK);
  	break;
  
@@ -309,13 +289,15 @@ index dc8f3e8..9721002 100644
      case PR_prctl:{
  	    word_t option = peek_reg(tracee, CURRENT, SYSARG_1);
  	    word_t arg2 = peek_reg(tracee, CURRENT, SYSARG_2);
-@@ -693,6 +720,13 @@ int translate_syscall_enter(Tracee *tracee)
+@@ -693,6 +723,15 @@ int translate_syscall_enter(Tracee *tracee)
  		status = 0;
  	    }
  
-+	/* ananbox: bypass PR_CAPBSET_DROP because we have no
-+	 * CAP_SETPCAP capability on Android.  */
-+	if (option == PR_CAPBSET_DROP) {
++	/* ananbox: bypass PR_CAPBSET_DROP/PR_CAPBSET_READ because
++	 * we have no CAP_SETPCAP capability on Android.  This is
++	 * handled in the enter stage so that prctl(2) does not
++	 * have to be traced at the exit stage as well.  */
++	if (option == PR_CAPBSET_DROP || option == PR_CAPBSET_READ) {
 +	    set_sysnum(tracee, PR_getuid);
 +	    status = 0;
 +	}

@@ -26,6 +26,7 @@ import com.github.ananbox.anna.AnnaService
 import com.github.ananbox.databinding.ActivityMainBinding
 import com.hzy.libp7zip.P7ZipApi
 import java.io.File
+import java.io.IOException
 import java.lang.String
 import java.util.Locale
 import kotlin.concurrent.thread
@@ -145,7 +146,7 @@ class MainActivity : AppCompatActivity() {
             val uri = data.data ?: return
             val progressDialog = showExtractingDialog()
             thread {
-                val romFile = File(filesDir, "rootfs.7z")
+                val romFile = File(filesDir, "rom-archive")
                 contentResolver.openInputStream(uri)?.use { input ->
                     romFile.outputStream().use { output -> input.copyTo(output) }
                 }
@@ -182,7 +183,18 @@ class MainActivity : AppCompatActivity() {
         startActivityForResult(
             Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                setType("application/x-7z-compressed")
+                // Both .7z and .tar.gz ROMs are accepted. The archive format is
+                // detected from the file content, not from the extension, so a
+                // file whose MIME type is reported generically still works.
+                setType("*/*")
+                putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    arrayOf(
+                        "application/x-7z-compressed",
+                        "application/gzip",
+                        "application/x-tar",
+                    )
+                )
             },
             READ_REQUEST_CODE
         )
@@ -198,7 +210,7 @@ class MainActivity : AppCompatActivity() {
             show()
         }
         thread {
-            val target = File(filesDir, "rootfs.7z")
+            val target = File(filesDir, "rom-archive")
             val ok = RomDownloader.download(asset, target) { progress ->
                 runOnUiThread {
                     if (progress.percent >= 0) {
@@ -221,19 +233,98 @@ class MainActivity : AppCompatActivity() {
     private fun extractRom(romFile: File, progressDialog: ProgressDialog) {
         val tmpDir = File(filesDir, "tmp")
         val cpu = Runtime.getRuntime().availableProcessors()
+        // Unpack into a staging directory first. That lets us tell whether
+        // the archive carries a top-level "rootfs/" wrapper, lets a nested
+        // .tar be unpacked without polluting filesDir, and keeps a failed
+        // extraction from leaving the guest half-updated.
+        val staging = File(filesDir, "rom-staging")
+        staging.deleteRecursively()
+        staging.mkdirs()
         P7ZipApi.executeCommand(
             String.format(
                 Locale.US, "7z x -mmt=%d -aoa '%s' '-o%s'",
-                cpu, romFile.absolutePath, filesDir
+                cpu, romFile.absolutePath, staging.absolutePath
             )
         )
-        BinderBridge.prepare(File(filesDir, "rootfs"))
+        // A .tar.gz may end up as a single .tar file when 7-Zip does not chain
+        // the gzip and tar decoders. Unpack it in that case.
+        unpackNestedTar(staging, cpu)
+        val extracted = normalizeRootfs(staging)
+        val target = File(filesDir, "rootfs")
+        // Keep the guest's writable state across a ROM update: ROM archives
+        // usually ship without /data, and the guest's own state lives there.
+        val oldData = File(target, "data")
+        val newData = File(extracted, "data")
+        if (oldData.isDirectory && !newData.exists()) {
+            oldData.renameTo(newData)
+        }
+        target.deleteRecursively()
+        if (!extracted.renameTo(target)) {
+            Log.e(TAG, "failed to install extracted rom: " + extracted.absolutePath)
+            staging.deleteRecursively()
+            return
+        }
+        staging.deleteRecursively()
+        // The container is launched with "sh <rootfs>/run.sh", so the ROM
+        // archive has to carry that script. A third-party archive may omit
+        // it; supply the copy bundled in the APK in that case.
+        ensureRunSh(target)
+        BinderBridge.prepare(target)
         runOnUiThread {
             progressDialog.dismiss()
             romFile.delete()
-            tmpDir.mkdir()
+            tmpDir.mkdirs()
             recreate()
         }
+    }
+
+    /**
+     * Makes sure the guest root carries the start script the container is
+     * launched with. A ROM that ships its own script keeps it; a ROM
+     * without one gets the copy bundled in the APK.
+     */
+    private fun ensureRunSh(rootfs: File) {
+        val runSh = File(rootfs, "run.sh")
+        if (runSh.exists()) return
+        try {
+            runSh.writeText(RomScripts.readRunSh(this))
+            Log.i(TAG, "rom has no run.sh, installed the bundled one")
+        } catch (e: IOException) {
+            Log.e(TAG, "failed to install the bundled run.sh: " + e.message)
+        }
+    }
+
+    /**
+     * If the extraction produced exactly one file and that file is a tar
+     * archive, unpack it in place. This covers .tar.gz ROMs where 7-Zip
+     * stops after the gzip layer.
+     */
+    private fun unpackNestedTar(dir: File, cpu: Int) {
+        val entries = dir.listFiles() ?: return
+        if (entries.size != 1) return
+        val only = entries[0]
+        if (!only.isFile || !only.name.endsWith(".tar", ignoreCase = true)) return
+        P7ZipApi.executeCommand(
+            String.format(
+                Locale.US, "7z x -mmt=%d -aoa '%s' '-o%s'",
+                cpu, only.absolutePath, dir.absolutePath
+            )
+        )
+        only.delete()
+    }
+
+    /**
+     * The ROM may or may not contain a top-level "rootfs" directory. When it
+     * does not, wrap the extracted tree into one so that filesDir/rootfs
+     * always holds the guest system.
+     */
+    private fun normalizeRootfs(staging: File): File {
+        val wrapped = File(staging, "rootfs")
+        if (wrapped.isDirectory) return wrapped
+        val entries = staging.listFiles() ?: emptyArray()
+        wrapped.mkdirs()
+        entries.forEach { it.renameTo(File(wrapped, it.name)) }
+        return wrapped
     }
 
     private fun showExtractingDialog(): ProgressDialog = ProgressDialog(this).apply {

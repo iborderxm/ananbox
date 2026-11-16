@@ -4,8 +4,8 @@ package com.github.ananbox
  * Catalog of prebuilt ROM images mirrored in this fork's GitHub releases.
  *
  * Only architectures with a published upload are listed; anything else falls
- * back to the manual .7z import. Keep [VERSION] and [RomAsset.sha256] in sync
- * with the release `rom-*` assets.
+ * back to the manual import (which accepts both .7z and .tar.gz). Keep
+ * [VERSION] and [RomAsset.sha256] in sync with the release `rom-*` assets.
  */
 object RomCatalog {
 

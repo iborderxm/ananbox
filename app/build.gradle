@@ -75,6 +75,30 @@ android {
     }
 }
 
+// The ROM start script (root/run.sh) is needed to launch the container. The
+// ROM build copies it into the image, but a third-party ROM archive may omit
+// it; bundle the very same file in the APK so the App can supply it. Keeping
+// a single source (src/main/cpp/anbox/scripts/run.sh) means the ROM build
+// and the App fallback cannot drift apart.
+def romAssetsDir = file("$buildDir/generated/romAssets")
+
+tasks.register('copyRomRunScript', Copy) {
+    from('src/main/cpp/anbox/scripts/run.sh')
+    into romAssetsDir
+}
+
+android {
+    sourceSets {
+        main {
+            assets.srcDirs += romAssetsDir
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+    dependsOn 'copyRomRunScript'
+}
+
 dependencies {
 
     implementation 'androidx.core:core-ktx:1.9.0'
