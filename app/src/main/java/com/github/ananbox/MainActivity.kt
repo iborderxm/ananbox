@@ -28,6 +28,8 @@ import com.github.ananbox.databinding.ActivityMainBinding
 import com.hzy.libp7zip.P7ZipApi
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.Locale
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
@@ -278,6 +280,10 @@ class MainActivity : AppCompatActivity() {
         // archive has to carry that script. A third-party archive may omit
         // it; supply the copy bundled in the APK in that case.
         ensureRunSh(target)
+        // ROMs built for the Third-party Twoyi project hard-code symlinks to
+        // Twoyi's private data dir (io.twoyi). Repoint them at the ananbox
+        // package so storage and app-native-library links resolve.
+        rewritePackageSymlinks(target)
         BinderBridge.prepare(target)
         runOnUiThread {
             progressDialog.dismiss()
@@ -318,6 +324,68 @@ class MainActivity : AppCompatActivity() {
         } catch (e: IOException) {
             Log.e(TAG, "failed to install the bundled run.sh: " + e.message)
         }
+    }
+
+    /**
+     * Repoints symlinks that a third-party ROM hard-coded to another package's
+     * private data directory. Twoyi-built ROMs contain links such as
+     *
+     *   mnt/sdcard -> /data/data/io.twoyi/rootfs/storage/self/primary
+     *   system/app/.../libbluetooth_jni.so -> ../../../user/0/io.twoyi/profiles/.../libbluetooth_jni.so
+     *
+     * Under ananbox the guest root is <filesDir>/rootfs and the app id is
+     * com.github.ananbox, so those targets never resolve. There are two forms
+     * to rewrite:
+     *   - absolute: /data/data/io.twoyi/rootfs/<rest> -> /<rest> (guest-relative)
+     *   - relative profiles: .../io.twoyi/profiles/default/rootfs/<rest> -> /<rest>
+     *
+     * A broken link whose target file is genuinely absent from the ROM stays
+     * broken (nothing to point at), but at least no longer leaks the foreign
+     * package path. The scan is content-based: any symlink whose target
+     * mentions "io.twoyi" is a candidate.
+     */
+    private fun rewritePackageSymlinks(rootfs: File) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.w(TAG, "skip symlink rewrite: needs API 26+")
+            return
+        }
+        val foreign = "io.twoyi"
+        val rootMarker = "$foreign/rootfs/"
+        val profileMarker = "$foreign/profiles/default/rootfs/"
+        var scanned = 0
+        var rewritten = 0
+        try {
+            Files.walk(rootfs.toPath()).use { paths ->
+                val links = paths.filter { Files.isSymbolicLink(it) }
+                for (path in links) {
+                    scanned++
+                    val target = Files.readSymbolicLink(path).toString()
+                    if (!target.contains(foreign)) continue
+                    // Strip everything up to and including the guest-root
+                    // marker so the remainder becomes a guest-absolute path.
+                    val suffix = when {
+                        target.contains(profileMarker) -> target.substringAfterLast(profileMarker)
+                        target.contains(rootMarker) -> target.substringAfterLast(rootMarker)
+                        else -> null
+                    }
+                    val newTarget = if (suffix != null) {
+                        "/$suffix"
+                    } else {
+                        // No known rootfs segment: just swap the package id.
+                        target.replace(foreign, "com.github.ananbox")
+                    }
+                    Files.delete(path)
+                    Files.createSymbolicLink(path, Paths.get(newTarget))
+                    rewritten++
+                    Log.i(TAG, "rewrote symlink ${rootfs.toPath().relativize(path)}: $target -> $newTarget")
+                }
+            }
+        } catch (e: IOException) {
+            Log.w(TAG, "failed to rewrite package symlinks: " + e.message)
+        } catch (e: UnsupportedOperationException) {
+            Log.w(TAG, "filesystem does not support symlinks: " + e.message)
+        }
+        Log.i(TAG, "symlink rewrite: scanned=$scanned rewritten=$rewritten")
     }
 
     /**
