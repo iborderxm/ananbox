@@ -1,0 +1,5 @@
+- [ananbox-fork 项目背景与目标](project_ananbox_fork.md) — rootless Android 容器 fork 的目标、当前进展与三个未完成项
+- [PRoot seccomp SIGSYS 修复](project_proot_seccomp_fix.md) — 宿主 seccomp 拦 set*id 致 Zygote 循环重启的根因、补丁位置与回归指标
+- [设备调试与日志取证流程](reference_device_debug.md) — adb 无线调试、Anna 网关端点、run-as 日志抓取命令集
+- [交付与验证偏好](feedback_delivery_prefs.md) — 幂等补丁、不擅自提交、量化验收、导出目录不入库
+- [用户画像与协作偏好](user_profile.md) — 技术背景、简体中文沟通、证据驱动 + 表格化结论
