@@ -27,4 +27,8 @@ export ANDROID_STORAGE=/storage
 export ASEC_MOUNTPOINT=/mnt/asec 
 export EXTERNAL_STORAGE=/sdcard 
 export PROOT_TMP_DIR=$DIR/tmp
-$2 --kill-on-exit -v 255 -r $DIR/rootfs -0 -w / -b /dev -b /proc -b /sys -b $DIR/rootfs/dev/kmsg:/dev/kmsg -b $DIR/rootfs/dev/pmsg0:/dev/pmsg0 -b $DIR/rootfs/system/vendor:/vendor -b $DIR/rootfs/dev/__properties__:/dev/__properties__ -b $DIR/rootfs/dev/socket:/dev/socket -b /dev/binder:/dev/binder -b /dev/ashmem:/dev/ashmem -b $DIR/qemu_pipe:/dev/qemu_pipe -b $DIR/rootfs/dev/input:/dev/input -b $DIR/rootfs/mnt/user/0:/storage/self /init > $DIR/proot.log 2>&1 &
+# Verbosity: level >= 3 makes PRoot trace every syscall enter/exit, which
+# produced >250 MB of proot.log within minutes on a phone. Level 1 keeps the
+# useful diagnostics (including the seccomp SIGSYS handler messages) without
+# the per-syscall trace.
+$2 --kill-on-exit -v 1 -r $DIR/rootfs -0 -w / -b /dev -b /proc -b /sys -b $DIR/rootfs/dev/kmsg:/dev/kmsg -b $DIR/rootfs/dev/pmsg0:/dev/pmsg0 -b $DIR/rootfs/system/vendor:/vendor -b $DIR/rootfs/dev/__properties__:/dev/__properties__ -b $DIR/rootfs/dev/socket:/dev/socket -b /dev/binder:/dev/binder -b /dev/ashmem:/dev/ashmem -b $DIR/qemu_pipe:/dev/qemu_pipe -b $DIR/rootfs/dev/input:/dev/input -b $DIR/rootfs/mnt/user/0:/storage/self /init > $DIR/proot.log 2>&1 &

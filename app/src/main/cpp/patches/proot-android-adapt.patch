@@ -1,0 +1,360 @@
+diff --git a/src/extension/fake_id0/fake_id0.c b/src/extension/fake_id0/fake_id0.c
+index f51ab46..7cbc87d 100644
+--- a/src/extension/fake_id0/fake_id0.c
++++ b/src/extension/fake_id0/fake_id0.c
+@@ -31,6 +31,8 @@
+ #include <string.h>		/* memcpy(3), */
+ #include <stdlib.h>		/* strtol(3), */
+ #include <linux/auxvec.h>	/* AT_,  */
++#include <linux/capability.h>	/* CAP_, */
++#include <linux/prctl.h>	/* PR_, */
+ 
+ #include "extension/extension.h"
+ #include "syscall/syscall.h"
+@@ -54,6 +56,11 @@ typedef struct {
+     gid_t egid;
+     gid_t sgid;
+     gid_t fsgid;
++
++    uint32_t effective;
++    uint32_t permitted;
++    uint32_t inheritable;
++    uint32_t keepCaps;
+ } Config;
+ 
+ typedef struct {
+@@ -64,6 +71,7 @@ typedef struct {
+ /* List of syscalls handled by this extensions.  */
+ static FilteredSysnum filtered_sysnums[] = {
+     { PR_capset, FILTER_SYSEXIT },
++    { PR_capget,		FILTER_SYSEXIT },
+     { PR_chmod, FILTER_SYSEXIT },
+     { PR_chown, FILTER_SYSEXIT },
+     { PR_chown32, FILTER_SYSEXIT },
+@@ -129,6 +137,7 @@ static FilteredSysnum filtered_sysnums[] = {
+     { PR_stat64, FILTER_SYSEXIT },
+     { PR_statfs, FILTER_SYSEXIT },
+     { PR_statfs64, FILTER_SYSEXIT },
++    { PR_prctl,		FILTER_SYSEXIT },
+     FILTERED_SYSNUM_END,
+ };
+ 
+@@ -327,32 +336,60 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
+ /**
+  * Emulate setuid(2) and setgid(2).
+  */
++#define HAS_CAP(cap) ((config->effective & (1 << cap)) != 0)
++#define CAP_SETuid CAP_SETUID
++#define CAP_SETgid CAP_SETGID
+ #define SETXID(id) do {							\
+ 	id ## _t id = peek_reg(tracee, ORIGINAL, SYSARG_1);		\
+ 	bool allowed;							\
+ 									\
+-	/* "EPERM: The user is not privileged (does not have the	\
+-	 * CAP_SETUID capability) and uid does not match the real UID	\
+-	 * or saved set-user-ID of the calling process." -- man		\
+-	 * setuid */							\
+-	allowed = (config->euid == 0 /* TODO: || HAS_CAP(SETUID) */	\
++	allowed = (HAS_CAP(CAP_SET ## id)                                  \
+ 		|| id == config->r ## id				\
+-		|| id == config->e ## id				\
+ 		|| id == config->s ## id);				\
+ 	if (!allowed)							\
+ 		return -EPERM;						\
++	/**                                                             \
++	 * "setuid() sets the effective user ID of the calling process. If the \
++	 * effective UID of the caller is root (more precisely: if the caller has \
++	 * the CAP_SETUID capability), the real UID and saved set-user-ID are also \
++	 * set." - setuid(2)                                            \
++	 */                                                             \
++	if (allowed) {                                                  \
++	       /*                                                       \
++		* "If one or more of the real, effective or saved set user IDs was \
++		* previously 0, and as a result of the UID changes all of these IDs have a \
++		* nonzero value, then all capabilities are cleared from the permitted and \
++		*  effective capability sets." - capabilities(7)        \
++		*/                                                      \
++		if (config->r ## id == 0                                \
++			|| config->e ## id == 0                         \
++			|| config->s ## id == 0) {                      \
++		    if (id != 0 && !config->keepCaps) {                 \
++			config->permitted = 0;                          \
++			config->effective = 0;                          \
++		    }                                                   \
++		}                                                       \
++		if (HAS_CAP(CAP_SETUID)) {                              \
++		    config->r ## id = id;				\
++		    config->s ## id = id;				\
++		}                                                       \
++		/**                                                     \
++		 * If the effective user ID is changed from 0 to nonzero, then all \
++		 * capabilities are cleared from the effective set.     \
++		 */                                                     \
++		if (config->e ## id == 0 && id != 0) {                  \
++		    config->effective = 0;                              \
++		}                                                       \
++		/**                                                     \
++		 * If the effective user ID is changed from nonzero to 0, then the \
++		 * permitted set is copied to the effective set.        \
++		 */                                                     \
++		if (config->e ## id != 0 && id == 0) {                  \
++		    config->effective = config->permitted;              \
++		}                                                       \
++	        config->e ## id  = id;					\
++	}                                                               \
+ 									\
+-	/* "If the effective UID of the caller is root, the real UID	\
+-	 * and saved set-user-ID are also set." -- man setuid */	\
+-	if (config->e ## id == 0) {					\
+-		config->r ## id = id;					\
+-		config->s ## id = id;					\
+-	}								\
+-									\
+-	/* "whenever the effective user ID is changed, fsuid will also	\
+-	 * be changed to the new value of the effective user ID."  --	\
+-	 * man setfsuid */						\
+-	config->e ## id  = id;						\
+ 	config->fs ## id = id;						\
+ 									\
+ 	poke_reg(tracee, SYSARG_RESULT, 0);				\
+@@ -395,7 +432,7 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
+ 	 *								\
+ 	 * Is it possible to "ruid <- euid" and "euid <- suid" at the	\
+ 	 * same time?  */						\
+-	allowed = (config->euid == 0 /* TODO: || HAS_CAP(SETUID) */	\
++	allowed = (HAS_CAP(CAP_SETUID)	\
+ 		|| (UNCHANGED_ID(e ## id) && UNCHANGED_ID(r ## id))	\
+ 		|| (r ## id == config->e ## id && (e ## id == config->r ## id || UNCHANGED_ID(e ## id))) \
+ 		|| (e ## id == config->r ## id && (r ## id == config->e ## id || UNCHANGED_ID(r ## id))) \
+@@ -492,7 +529,7 @@ static int handle_sysenter_end(Tracee *tracee, const Config *config)
+ 	 * superuser or if fsuid matches either the real user ID,	\
+ 	 * effective user ID, saved set-user-ID, or the current value	\
+ 	 * of fsuid." -- man setfsuid */				\
+-	allowed = (config->euid == 0 /* TODO: || HAS_CAP(SETUID) */	\
++	allowed = (HAS_CAP(CAP_SETUID)	\
+ 		|| fs ## type ## id == config->fs ## type ## id		\
+ 		|| EQUALS_ANY_ID(fs ## type ## id, type));		\
+ 	if (allowed)							\
+@@ -589,7 +626,6 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
+     case PR_setgroups32:
+     case PR_mknod:
+     case PR_mknodat:
+-    case PR_capset:
+     case PR_setxattr:
+     case PR_lsetxattr:
+     case PR_fsetxattr:
+@@ -612,12 +648,106 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
+ 
+ 	    /* Force success if the tracee was supposed to have
+ 	     * the capability.  */
+-	    if (config->euid == 0)	/* TODO: || HAS_CAP(...) */
++	    if (HAS_CAP(CAP_CHOWN))
+ 		poke_reg(tracee, SYSARG_RESULT, 0);
+ 
+ 	    return 0;
+ 	}
+ 
++    case PR_capget: {
++
++		struct __user_cap_header_struct capheader;
++		struct __user_cap_data_struct capdata[2];
++		word_t capheader_addr, capdata_addr;
++		capheader_addr = peek_reg(tracee, ORIGINAL, SYSARG_1);
++		capdata_addr = peek_reg(tracee, ORIGINAL, SYSARG_2);
++		read_data(tracee, &capheader, capheader_addr, sizeof(capheader));
++		// TODO: get it implemented
++		if (capheader.version == _LINUX_CAPABILITY_VERSION_1) {
++		}
++		else if (capheader.version == _LINUX_CAPABILITY_VERSION_2 ||
++		       capheader.version == _LINUX_CAPABILITY_VERSION_3) {
++		    memset(capdata, 0, sizeof(capdata));
++		    capdata[0].effective = config->effective;
++		    capdata[0].permitted = config->permitted;
++		    capdata[0].inheritable = config->inheritable;
++		    // TODO: capdata[1]
++		    write_data(tracee, capdata_addr, capdata, sizeof(capdata));
++		    poke_reg(tracee, SYSARG_RESULT, 0);
++		    return 0;
++		}
++		poke_reg(tracee, SYSARG_RESULT, -EINVAL);
++		return 0;
++	}
++    case PR_capset: {
++
++		struct __user_cap_header_struct capheader;
++		struct __user_cap_data_struct capdata[2];
++		word_t capheader_addr, capdata_addr;
++		capheader_addr = peek_reg(tracee, ORIGINAL, SYSARG_1);
++		capdata_addr = peek_reg(tracee, ORIGINAL, SYSARG_2);
++		read_data(tracee, &capheader, capheader_addr, sizeof(capheader));
++		// TODO: check permission here
++		if (capheader.pid != 0) {
++		    poke_reg(tracee, SYSARG_RESULT, -EPERM);
++		    return 0;
++		}
++		// TODO: get it implemented
++		if (capheader.version == _LINUX_CAPABILITY_VERSION_1) {
++		}
++		else if (capheader.version == _LINUX_CAPABILITY_VERSION_2 ||
++		       capheader.version == _LINUX_CAPABILITY_VERSION_3) {
++		    read_data(tracee, &capdata, capdata_addr, sizeof(capdata_addr));
++		    // TODO: implemented data[1]
++		    uint32_t permitted = capdata[0].permitted;
++		    uint32_t effective = capdata[0].effective;
++		    uint32_t inheritable = capdata[0].inheritable;
++		    // "Permitted: This is a limiting superset for the effective capabilities
++		    // that the thread may assume." - capabilities(7)
++		    if ((effective & ~config->permitted) != 0) {
++			poke_reg(tracee, SYSARG_RESULT, -EPERM);
++			return 0;
++		    }
++		    // "It is also a limiting superset for the capabilities that may be added
++		    // to the inheritable set by a thread that does not have the CAP_SETPCAP
++		    // capability in its effective set."
++		    if ((config->effective & CAP_SETPCAP) == 0 &&
++			    (inheritable & ~(config->inheritable | config->effective)) != 0) {
++			poke_reg(tracee, SYSARG_RESULT, -EPERM);
++			return 0;
++		    }
++		    // "If a thread drops a capability from its permitted set, it can never
++		    // reacquire that capability (unless it execve(2)s ..."
++		    if ((permitted & ~config->permitted) != 0) {
++			poke_reg(tracee, SYSARG_RESULT, -EPERM);
++			return 0;
++		    }
++		    // TODO: bounding set
++		    config->permitted = permitted;
++		    config->inheritable = inheritable;
++		    config->effective = effective;
++		    poke_reg(tracee, SYSARG_RESULT, 0);
++		    return 0;
++		}
++		poke_reg(tracee, SYSARG_RESULT, -EINVAL);
++		return 0;
++	}
++    case PR_prctl: {
++
++		word_t option;
++		option = peek_reg(tracee, ORIGINAL, SYSARG_1);
++		/* we don't have file capabilities */
++		if ((int)option == PR_CAPBSET_DROP || (int)option == PR_CAPBSET_READ) {
++		    poke_reg(tracee, SYSARG_RESULT, -EINVAL);
++		    return 0;
++		}
++		if ((int)option == PR_SET_KEEPCAPS) {
++		    config->keepCaps = peek_reg(tracee, ORIGINAL, SYSARG_1);
++		    poke_reg(tracee, SYSARG_RESULT, 0);
++		}
++		return 0;
++	}
++
+     case PR_fstatat64:
+     case PR_newfstatat:
+     case PR_stat64:
+@@ -817,6 +947,10 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
+ 	    config->egid = gid;
+ 	    config->sgid = gid;
+ 	    config->fsgid = gid;
++	    config->effective = 0xFFFFFFFFU;
++	    config->permitted = 0xFFFFFFFFU;
++	    config->inheritable = 0xFFFFFFFFU;
++	    config->keepCaps = 0;
+ 
+ 	    extension->filtered_sysnums = filtered_sysnums;
+ 	    return 0;
+@@ -854,7 +988,6 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
+ 
+ 	    /* Force permissions if the tracee was supposed to
+ 	     * have the capability.  */
+-	    if (config->euid == 0)	/* TODO: || HAS_CAP(DAC_OVERRIDE) */
+ 		override_permissions(tracee, (char *) data1, (bool) data2);
+ 	    return 0;
+ 	}
+@@ -889,6 +1022,7 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
+ 
+ 	    /* This has to be done before PRoot pushes the load
+ 	     * script into tracee's stack.  */
++	    config->keepCaps = 0;
+ 	    adjust_elf_auxv(tracee, config);
+ 
+ 	    status = stat(tracee->load_info->host_path, &mode);
+diff --git a/src/syscall/enter.c b/src/syscall/enter.c
+index dc8f3e8..9721002 100644
+--- a/src/syscall/enter.c
++++ b/src/syscall/enter.c
+@@ -30,6 +30,11 @@
+ #include <string.h>		/* strcpy */
+ #include <unistd.h>		/* read(2), write(2), close(2), */
+ #include <sys/prctl.h>		/* PR_SET_DUMPABLE */
++#include <sys/mount.h>	/* MS_BIND */
++
++#ifndef PR_CAPBSET_DROP
++#define PR_CAPBSET_DROP 4
++#endif
+ #include "syscall/syscall.h"
+ #include "syscall/sysnum.h"
+ #include "syscall/socket.h"
+@@ -44,6 +49,7 @@
+ #include "tracee/mem.h"
+ #include "tracee/abi.h"
+ #include "path/path.h"
++#include "path/binding.h"
+ #include "path/canon.h"
+ #include "path/temp.h"
+ #include "arch.h"
+@@ -586,6 +592,7 @@ int translate_syscall_enter(Tracee *tracee)
+ 
+     case PR_mount:
+ 	status = get_sysarg_path(tracee, path, SYSARG_1);
++	flags = peek_reg(tracee, CURRENT, SYSARG_4);
+ 	if (status < 0)
+ 	    break;
+ 
+@@ -598,6 +605,20 @@ int translate_syscall_enter(Tracee *tracee)
+ 	}
+ 
+ 	status = translate_sysarg(tracee, SYSARG_2, REGULAR);
++	if (status < 0)
++	    break;
++
++	/* ananbox: support mount --bind through the binding mechanism. */
++	if (flags & MS_BIND) {
++	    char src[PATH_MAX], dest[PATH_MAX];
++
++	    get_sysarg_path(tracee, src, SYSARG_1);
++	    get_sysarg_path(tracee, dest, SYSARG_2);
++	    if (insort_binding3(tracee, tracee->ctx, src, dest) == NULL)
++		status = -1;
++	    else
++		set_sysnum(tracee, PR_getuid);
++	}
+ 	break;
+ 
+     case PR_openat:
+@@ -677,6 +698,12 @@ int translate_syscall_enter(Tracee *tracee)
+ 	    translate_path2(tracee, newdirfd, newpath, SYSARG_3, SYMLINK);
+ 	break;
+ 
++    case PR_unshare:
++	/* ananbox: bypass unshare(2), it cannot work here.  */
++	set_sysnum(tracee, PR_getuid);
++	status = 0;
++	break;
++
+     case PR_prctl:{
+ 	    word_t option = peek_reg(tracee, CURRENT, SYSARG_1);
+ 	    word_t arg2 = peek_reg(tracee, CURRENT, SYSARG_2);
+@@ -693,6 +720,13 @@ int translate_syscall_enter(Tracee *tracee)
+ 		status = 0;
+ 	    }
+ 
++	/* ananbox: bypass PR_CAPBSET_DROP because we have no
++	 * CAP_SETPCAP capability on Android.  */
++	if (option == PR_CAPBSET_DROP) {
++	    set_sysnum(tracee, PR_getuid);
++	    status = 0;
++	}
++
+ 	    /* PRoot sets no_new_privs itself, before the program starts,
+ 	     * to install its seccomp filter, so the kernel would answer
+ 	     * PR_GET_NO_NEW_PRIVS for PRoot: answer it at the exit stage

@@ -31,6 +31,13 @@ ExternalProject_Add(
         # unless the pinned revision already carries it (i.e. after the fix is
         # pushed upstream and GIT_TAG is bumped), so this stays idempotent.
         PATCH_COMMAND sh -c "grep -q handle_seccomp_trap src/tracee/event.c || patch -p1 --forward < ${CMAKE_SOURCE_DIR}/patches/proot-sigsys.patch"
+        # Ananbox/proot is not plain upstream: on top of v5.4.0 it carries 11
+        # Android-specific commits (capability emulation, PR_CAPBSET_DROP and
+        # unshare(2) bypasses, mount --bind through the binding mechanism).
+        # Upstream v5.5.0 has none of them, so the guest Zygote dies on
+        # "capset failed" and init restarts it forever.  Transplant those
+        # adaptations; the grep guard keeps it idempotent.
+        PATCH_COMMAND sh -c "grep -q HAS_CAP src/extension/fake_id0/fake_id0.c || patch -p1 --forward < ${CMAKE_SOURCE_DIR}/patches/proot-android-adapt.patch"
         CONFIGURE_COMMAND cd ${PROOT_SRC} && ${PROOT_PKG_CONFIG_PATH} make clean
         # HAS_SWIG/HAS_PYTHON_CONFIG are cleared on purpose: when a host swig and
         # python3-config are present (e.g. CI runners) proot tries to build its
