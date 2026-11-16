@@ -37,7 +37,12 @@ ExternalProject_Add(
         # Upstream v5.5.0 has none of them, so the guest Zygote dies on
         # "capset failed" and init restarts it forever.  Transplant those
         # adaptations; the grep guard keeps it idempotent.
-        PATCH_COMMAND sh -c "grep -q HAS_CAP src/extension/fake_id0/fake_id0.c || patch -p1 --forward < ${CMAKE_SOURCE_DIR}/patches/proot-android-adapt.patch"
+        #
+        # The guard must look for a token that only exists after the patch is
+        # applied.  "keepCaps" is a new field of the fake_id0 extension's
+        # Config struct; "HAS_CAP" would match the upstream file too (it
+        # appears in comments) and would silently skip the patch.
+        PATCH_COMMAND sh -c "grep -q keepCaps src/extension/fake_id0/fake_id0.c || patch -p1 --forward < ${CMAKE_SOURCE_DIR}/patches/proot-android-adapt.patch"
         CONFIGURE_COMMAND cd ${PROOT_SRC} && ${PROOT_PKG_CONFIG_PATH} make clean
         # HAS_SWIG/HAS_PYTHON_CONFIG are cleared on purpose: when a host swig and
         # python3-config are present (e.g. CI runners) proot tries to build its
